@@ -1,6 +1,7 @@
-package generator
+package guten
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -68,7 +69,7 @@ func NewGutenbergCache(cacheDir string, maxAge time.Duration) *GutenCache {
 		cacheFile: filepath.Join(cacheDir, "gutenberg_cache.json"),
 		maxAge:    maxAge,
 		httpClient: &http.Client{
-			Timeout: 30 * time.Second,
+			Timeout: 90 * time.Second,
 		},
 	}
 }
@@ -83,7 +84,7 @@ func (gc *GutenCache) GetLibrary() (*library.StoryLibrary, error) {
 
 	// Cache is stale or doesn't exist, fetch from API
 	logrus.Info("Fetching fresh Gutenberg stories from API")
-	library, err := gc.fetchFromAPI()
+	storyLibrary, err := gc.fetchFromAPI()
 	if err != nil {
 		// If API fails, try to load from cache even if stale
 		logrus.WithError(err).Warn("API fetch failed, trying stale cache")
@@ -94,11 +95,11 @@ func (gc *GutenCache) GetLibrary() (*library.StoryLibrary, error) {
 	}
 
 	// Save to cache
-	if err := gc.saveToCache(library); err != nil {
+	if err := gc.saveToCache(storyLibrary); err != nil {
 		logrus.WithError(err).Warn("Failed to save to cache")
 	}
 
-	return library, nil
+	return storyLibrary, nil
 }
 
 // isCacheFresh checks if the cache file exists and is within the max age
@@ -126,6 +127,7 @@ func (gc *GutenCache) loadFromCache() (*library.StoryLibrary, error) {
 
 	logrus.WithFields(logrus.Fields{
 		"stories":      len(cached.Library.Stories),
+		"cache_file":   gc.cacheFile,
 		"last_updated": cached.LastUpdated.Format(time.RFC3339),
 		"total_books":  cached.TotalBooks,
 	}).Info("Loaded Gutenberg library from cache")
@@ -161,27 +163,27 @@ func (gc *GutenCache) saveToCache(library *library.StoryLibrary) error {
 	return nil
 }
 
-// fetchFromAPI fetches stories from the Gutendx API
+// fetchFromAPI fetches stories from the Gutendex API
 func (gc *GutenCache) fetchFromAPI() (*library.StoryLibrary, error) {
 	library := &library.StoryLibrary{
 		Name:    "Project Gutenberg Children's Collection",
-		URL:     "https://gutendx.com/books/",
+		URL:     "https://gutendex.com/books/",
 		Stories: []story.Item{},
 	}
 
 	// Fetch multiple pages of children's books
 	queries := []string{
 		"?topic=children",
-		"?topic=juvenile",
-		"?topic=fairy",
-		"?search=children%20story",
-		"?search=bedtime%20story",
+		//"?topic=juvenile",
+		//"?topic=fairy",
+		//"?search=children%20story",
+		//"?search=bedtime%20story",
 	}
 
 	seenIDs := make(map[int]bool)
 
 	for _, query := range queries {
-		url := "https://gutendx.com/books/" + query + "&languages=en"
+		url := "https://gutendex.com/books/" + query + "&languages=en" + "&mime_type=text"
 		stories, err := gc.fetchStoriesFromURL(url)
 		if err != nil {
 			logrus.WithError(err).WithField("url", url).Warn("Failed to fetch from URL")
@@ -254,9 +256,25 @@ func (gc *GutenCache) convertBooksToStories(books []GutendexBook) []story.Item {
 		genre := gc.determineGenre(book)
 
 		// Get text content URL (prefer plain text)
-		contentURL := gc.getBestTextFormat(book.Formats)
+		contentURL := gc.getBestTextFormatURL(book.Formats)
 		if contentURL == "" {
 			continue // Skip if no readable format available
+		}
+
+		content, err := gc.loadContent(context.Background(), book)
+		if err != nil {
+			logrus.WithFields(logrus.Fields{
+				"book":  book.ID,
+				"title": book.Title,
+			}).WithError(err).Warn("failed to load content")
+			continue
+		}
+
+		if content == "" {
+			logrus.WithFields(logrus.Fields{
+				"book":  book.ID,
+				"title": book.Title,
+			}).Warn("book content is empty")
 		}
 
 		// Create story item
@@ -264,7 +282,7 @@ func (gc *GutenCache) convertBooksToStories(books []GutendexBook) []story.Item {
 			ID:          fmt.Sprintf("gutenberg-%d", book.ID),
 			Title:       gc.cleanTitle(book.Title),
 			Author:      authorName,
-			Content:     fmt.Sprintf("[Content available at: %s]", contentURL),
+			Content:     content,
 			AgeGroup:    ageGroup,
 			Genre:       genre,
 			Duration:    gc.estimateDuration(book),
@@ -275,6 +293,33 @@ func (gc *GutenCache) convertBooksToStories(books []GutendexBook) []story.Item {
 	}
 
 	return stories
+}
+
+func (gc *GutenCache) loadContent(ctx context.Context, book GutendexBook) (string, error) {
+
+	url := gc.getBestTextFormatURL(book.Formats)
+
+	if !strings.HasPrefix(url, "http") {
+		return "", fmt.Errorf("invalid url: %s", url)
+	}
+
+	// todo: improve this
+	resp, err := http.Get(url)
+	if err != nil {
+		return "", fmt.Errorf("failed to fetch text: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("unexpected status %d", resp.StatusCode)
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("read error: %w", err)
+	}
+
+	return string(body), nil
 }
 
 // isChildrensSuitable checks if a book is suitable for children
@@ -343,13 +388,12 @@ func (gc *GutenCache) determineGenre(book GutendexBook) string {
 	return "Classic Tale"
 }
 
-// getBestTextFormat finds the best text format URL
-func (gc *GutenCache) getBestTextFormat(formats map[string]string) string {
+// getBestTextFormatURL finds the best text format URL
+func (gc *GutenCache) getBestTextFormatURL(formats map[string]string) string {
 	// Prefer plain text formats
 	preferredFormats := []string{
 		"text/plain; charset=utf-8",
 		"text/plain",
-		"text/html",
 	}
 
 	for _, format := range preferredFormats {

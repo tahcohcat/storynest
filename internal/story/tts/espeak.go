@@ -263,3 +263,67 @@ func parseESpeakVoices(output string) []string {
 
 	return voices
 }
+
+// chunkText splits text into smaller chunks suitable for TTS engines
+func (e *ESpeakEngine) chunkText(text string, maxWords int) []string {
+	words := strings.Fields(text)
+	if len(words) <= maxWords {
+		return []string{text}
+	}
+
+	var chunks []string
+	var currentChunk []string
+
+	for _, word := range words {
+		currentChunk = append(currentChunk, word)
+
+		// Check if we should split at a sentence boundary
+		if len(currentChunk) >= maxWords {
+			// Look for a good breaking point (sentence end)
+			chunkText := strings.Join(currentChunk, " ")
+			if breakPoint := e.findSentenceBreak(chunkText, len(currentChunk)*3/4); breakPoint > 0 {
+				// Split at sentence boundary
+				chunk := chunkText[:breakPoint]
+				remainder := strings.TrimSpace(chunkText[breakPoint:])
+
+				chunks = append(chunks, chunk)
+
+				// Start next chunk with remainder
+				if remainder != "" {
+					currentChunk = strings.Fields(remainder)
+				} else {
+					currentChunk = []string{}
+				}
+			} else {
+				// No good break point, split at word boundary
+				chunks = append(chunks, strings.Join(currentChunk, " "))
+				currentChunk = []string{}
+			}
+		}
+	}
+
+	// Add remaining words
+	if len(currentChunk) > 0 {
+		chunks = append(chunks, strings.Join(currentChunk, " "))
+	}
+
+	return chunks
+}
+
+// findSentenceBreak finds the best place to break text at a sentence boundary
+func (e *ESpeakEngine) findSentenceBreak(text string, minPos int) int {
+	// Look for sentence endings after the minimum position
+	sentenceEnders := []string{". ", "! ", "? ", ".\n", "!\n", "?\n"}
+
+	bestPos := -1
+	for _, ender := range sentenceEnders {
+		if pos := strings.Index(text[minPos:], ender); pos != -1 {
+			actualPos := minPos + pos + len(ender)
+			if bestPos == -1 || actualPos < bestPos {
+				bestPos = actualPos
+			}
+		}
+	}
+
+	return bestPos
+}

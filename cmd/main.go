@@ -92,15 +92,18 @@ from public libraries around the world. Perfect for bedtime! 🌙
 
 	rootCmd.AddCommand(listCmd, randomCmd, readCmd, librariesCmd, settingsCmd)
 
-	// Load sample data
-	app.LoadSampleLibraries()
+	// Add Gutenberg commands
+	app.AddGutenbergCommands(rootCmd)
+
+	// Load sample data including Gutenberg
+	app.LoadSampleLibrariesWithGutenberg()
 
 	if err := rootCmd.Execute(); err != nil {
 		colours.Error.Printf("❌ Error: %v\n", err)
 		os.Exit(1)
 	}
 
-	//app.ListStories(rootCmd, []string{})
+	rootCmd.Run(randomCmd, []string{})
 }
 
 // Configuration management with Viper

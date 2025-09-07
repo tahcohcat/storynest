@@ -9,9 +9,10 @@ import (
 	"math/rand"
 	"net/http"
 	"os"
+	"path/filepath"
 	"storynest/internal/cli/scheme/colours"
 	"storynest/internal/domain/library"
-	"storynest/internal/domain/library/generator"
+	"storynest/internal/domain/library/guten"
 	"storynest/internal/domain/story"
 	"storynest/internal/story/tts"
 	"strconv"
@@ -24,7 +25,7 @@ import (
 
 // StoryNest main application structure
 type StoryNest struct {
-	generator generator.StoryGenerator
+	onlineLibrary library.CachedOnlineLibrary
 
 	libraries []library.StoryLibrary
 	Tts       tts.Engine
@@ -47,9 +48,9 @@ func NewStoryNest() *StoryNest {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	return &StoryNest{
-		generator: generator.NewGutendex(),
+		onlineLibrary: guten.NewGutenbergCache("./cache", 24*time.Hour),
 
-		// todo: remove once we have a generator
+		// todo: remove once we have a guten
 		libraries: []library.StoryLibrary{},
 		Tts:       engine,
 		ctx:       ctx,
@@ -148,23 +149,23 @@ func (sn *StoryNest) ListStories(cmd *cobra.Command, args []string) {
 	colours.Title.Println("📚 Available Stories 📚")
 	fmt.Println()
 
-	resources, err := sn.generator.ListOnlineResources()
+	library, err := sn.onlineLibrary.GetLibrary()
 	if err != nil {
 		colours.Error.Println(err)
 	}
 
 	// todo:
 	count := 0
-	for _, res := range resources {
+	for _, story := range library.Stories {
 		count++
 		fmt.Printf("  %d. ", count)
-		colours.Title.Printf("%s", res.Name)
+		colours.Title.Printf("%s", story.Title)
 		fmt.Printf(" by ")
-		colours.Author.Printf("%s", res.Metadata["Authors"])
-		//fmt.Printf("\n     🎯 Age: %s | 🎭 Genre: %s | ⏱️ Duration: %s\n",
-		//	story.AgeGroup, story.Genre, story.Duration)
-		fmt.Printf("     💡 %s\n", res.Metadata["Description"])
-		colours.Info.Printf("     ID: %s\n", res.ID)
+		colours.Author.Printf("%s", story.Author)
+		fmt.Printf("\n     🎯 Age: %s | 🎭 Genre: %s | ⏱️ Duration: %s\n",
+			story.AgeGroup, story.Genre, story.Duration)
+		fmt.Printf("     💡 %s\n", story.Description)
+		colours.Info.Printf("     ID: %s\n", story.ID)
 		fmt.Println()
 	}
 
@@ -429,4 +430,167 @@ func (sn *StoryNest) fetchLibraryFromURL(url string) (*library.StoryLibrary, err
 	}
 
 	return &library, nil
+}
+
+// LoadGutenbergLibrary loads stories from Project Gutenberg with caching
+func (sn *StoryNest) LoadGutenbergLibrary() error {
+	// Get user's cache directory (or use current directory as fallback)
+	cacheDir := getCacheDirectory()
+
+	// Create cache with 24-hour refresh
+	cache := guten.NewGutenbergCache(cacheDir, 24*time.Hour)
+
+	// Get the library (from cache or API)
+	gutenbergLibrary, err := cache.GetLibrary()
+	if err != nil {
+		return err
+	}
+
+	// Add to our libraries
+	sn.libraries = append(sn.libraries, *gutenbergLibrary)
+
+	colours.Success.Printf("✨ Loaded %d stories from Project Gutenberg\n", len(gutenbergLibrary.Stories))
+	return nil
+}
+
+// RefreshGutenbergCache forces a refresh of the Gutenberg cache
+func (sn *StoryNest) RefreshGutenbergCache(cmd *cobra.Command, args []string) {
+	colours.Info.Println("🔄 Refreshing Gutenberg cache...")
+
+	cacheDir := getCacheDirectory()
+	cache := guten.NewGutenbergCache(cacheDir, 24*time.Hour)
+
+	// Clear existing cache
+	if err := cache.ClearCache(); err != nil {
+		colours.Error.Printf("❌ Failed to clear cache: %v\n", err)
+		return
+	}
+
+	// Fetch fresh data
+	gutenbergLibrary, err := cache.GetLibrary()
+	if err != nil {
+		colours.Error.Printf("❌ Failed to refresh cache: %v\n", err)
+		return
+	}
+
+	// Update our libraries (remove old Gutenberg library if exists)
+	newLibraries := make([]library.StoryLibrary, 0)
+	for _, lib := range sn.libraries {
+		if lib.Name != "Project Gutenberg Children's Collection" {
+			newLibraries = append(newLibraries, lib)
+		}
+	}
+	newLibraries = append(newLibraries, *gutenbergLibrary)
+	sn.libraries = newLibraries
+
+	colours.Success.Printf("✅ Cache refreshed! Loaded %d fresh stories from Project Gutenberg\n", len(gutenbergLibrary.Stories))
+}
+
+// ShowCacheStatus displays information about the Gutenberg cache
+func (sn *StoryNest) ShowCacheStatus(cmd *cobra.Command, args []string) {
+	colours.Title.Println("📊 Gutenberg Cache Status")
+
+	cacheDir := getCacheDirectory()
+	cache := guten.NewGutenbergCache(cacheDir, 24*time.Hour)
+
+	info, err := cache.GetCacheInfo()
+	if err != nil {
+		colours.Error.Printf("❌ Failed to get cache info: %v\n", err)
+		return
+	}
+
+	if info["exists"].(bool) {
+		colours.Success.Println("✅ Cache exists")
+		colours.Info.Printf("📁 Location: %s\n", filepath.Join(cacheDir, "gutenberg_cache.json"))
+		colours.Info.Printf("📏 Size: %d bytes\n", info["size"].(int64))
+		colours.Info.Printf("🕐 Last modified: %s\n", info["last_modified"].(time.Time).Format("2006-01-02 15:04:05"))
+
+		if info["is_fresh"].(bool) {
+			colours.Success.Println("🔄 Cache is fresh")
+		} else {
+			colours.Warning.Println("⏰ Cache is stale")
+		}
+
+		colours.Info.Printf("⏳ Max age: %.1f hours\n", info["max_age_hours"].(float64))
+	} else {
+		colours.Warning.Println("❌ Cache does not exist")
+		colours.Info.Println("💡 Run 'storynest gutenberg refresh' to create cache")
+	}
+}
+
+// Add Gutenberg commands to your main.go rootCmd
+func (sn *StoryNest) AddGutenbergCommands(rootCmd *cobra.Command) {
+	// Gutenberg parent command
+	gutenbergCmd := &cobra.Command{
+		Use:   "gutenberg",
+		Short: "📚 Manage Project Gutenberg stories",
+		Long:  "Access and manage stories from Project Gutenberg's free digital library",
+	}
+
+	// Refresh subcommand
+	refreshCmd := &cobra.Command{
+		Use:   "refresh",
+		Short: "🔄 Refresh Gutenberg cache",
+		Long:  "Download fresh stories from Project Gutenberg API",
+		Run:   sn.RefreshGutenbergCache,
+	}
+
+	// Status subcommand
+	statusCmd := &cobra.Command{
+		Use:   "status",
+		Short: "📊 Show cache status",
+		Long:  "Display information about the local Gutenberg cache",
+		Run:   sn.ShowCacheStatus,
+	}
+
+	// Load subcommand
+	loadCmd := &cobra.Command{
+		Use:   "load",
+		Short: "📖 Load Gutenberg stories",
+		Long:  "Load stories from Project Gutenberg (cached or fresh)",
+		Run: func(cmd *cobra.Command, args []string) {
+			if err := sn.LoadGutenbergLibrary(); err != nil {
+				colours.Error.Printf("❌ Failed to load Gutenberg library: %v\n", err)
+			}
+		},
+	}
+
+	gutenbergCmd.AddCommand(refreshCmd, statusCmd, loadCmd)
+	rootCmd.AddCommand(gutenbergCmd)
+}
+
+// getCacheDirectory returns the appropriate cache directory
+func getCacheDirectory() string {
+	// Try to use user's cache directory
+	if cacheDir, err := os.UserCacheDir(); err == nil {
+		storyNestCache := filepath.Join(cacheDir, "storynest")
+		return storyNestCache
+	}
+
+	// Try user's home directory
+	if homeDir, err := os.UserHomeDir(); err == nil {
+		storyNestCache := filepath.Join(homeDir, ".storynest", "cache")
+		return storyNestCache
+	}
+
+	// Get current working directory as fallback
+	if cwd, err := os.Getwd(); err == nil {
+		return filepath.Join(cwd, "cache")
+	}
+
+	// Final fallback to a simple cache directory in current location
+	return "cache"
+}
+
+// UpdatedLoadSampleLibraries - modify your existing method to include Gutenberg
+func (sn *StoryNest) LoadSampleLibrariesWithGutenberg() {
+	// Load your existing sample libraries first
+	sn.LoadSampleLibraries()
+
+	// Then try to load Gutenberg stories
+	colours.Info.Println("🌐 Loading Project Gutenberg stories...")
+	if err := sn.LoadGutenbergLibrary(); err != nil {
+		colours.Warning.Printf("⚠️ Could not load Gutenberg stories: %v\n", err)
+		colours.Info.Println("💡 You can manually load them later with: storynest gutenberg load")
+	}
 }
