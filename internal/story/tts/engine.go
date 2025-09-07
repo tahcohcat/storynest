@@ -20,9 +20,6 @@ func (e EngineType) String() string {
 	return string(e)
 }
 
-// internal/tts/factory.go
-// Updated factory to include platform-specific engines
-
 // NewEngine creates a new TTS engine based on the provided config
 func NewEngine(config Config) (Engine, error) {
 	// Handle auto-selection
@@ -35,23 +32,27 @@ func NewEngine(config Config) (Engine, error) {
 		return NewMockTTSEngine(config), nil
 
 	case EngineTypeESpeak.String():
-		return NewESpeakEngine(config)
+		return newESpeakEngine(config)
 
 	case EngineTypeSAPI.String():
 		if runtime.GOOS != "windows" {
 			return nil, fmt.Errorf("SAPI engine only supports Windows")
 		}
-		return NewSAPIEngine(config)
+		return newSAPIEngine(config)
 
 	case EngineTypeAVFoundation.String():
 		if runtime.GOOS != "darwin" {
 			return nil, fmt.Errorf("AVFoundation engine only supports macOS")
 		}
-		return NewAVFoundationEngine(config)
+		return newAVFoundationEngine(config)
 
 	default:
 		return nil, fmt.Errorf("unsupported TTS engine type: %s", config.Type)
 	}
+}
+
+func newAVFoundationEngine(config Config) (Engine, error) {
+	panic("not implemented on windows")
 }
 
 // getBestEngineForPlatform returns the recommended engine for the current platform

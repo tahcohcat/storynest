@@ -1,14 +1,11 @@
 //go:build windows
 
-// internal/tts/sapi_windows.go
 package tts
 
 import (
 	"fmt"
 	"os/exec"
-	"runtime"
 	"sync"
-	"syscall"
 )
 
 // SAPIEngine implements Windows SAPI TTS
@@ -20,43 +17,13 @@ type SAPIEngine struct {
 	mutex   sync.RWMutex
 }
 
-// Windows API constants
-const (
-	CLSID_SpVoice = "{96749377-3391-11D2-9EE3-00C04F797396}"
-	IID_ISpVoice  = "{6C44DF74-72B9-4992-A1EC-EF996E0422D4}"
-)
-
-var (
-	ole32                = syscall.NewLazyDLL("ole32.dll")
-	procCoInitialize     = ole32.NewProc("CoInitialize")
-	procCoCreateInstance = ole32.NewProc("CoCreateInstance")
-	procCoUninitialize   = ole32.NewProc("CoUninitialize")
-)
-
-// NewSAPIEngine creates a new Windows SAPI TTS engine
-func NewSAPIEngine(config Config) (*SAPIEngine, error) {
-	if runtime.GOOS != "windows" {
-		return nil, fmt.Errorf("SAPI engine only supports Windows")
-	}
-
+// newSAPIEngine creates a new Windows SAPI TTS engine
+func newSAPIEngine(config Config) (*SAPIEngine, error) {
 	engine := &SAPIEngine{
 		config: config,
 	}
 
-	// Initialize COM
-	if err := engine.initializeCOM(); err != nil {
-		return nil, fmt.Errorf("failed to initialize COM: %w", err)
-	}
-
 	return engine, nil
-}
-
-func (s *SAPIEngine) initializeCOM() error {
-	ret, _, _ := procCoInitialize.Call(0)
-	if ret != 0 {
-		return fmt.Errorf("CoInitialize failed with code: %d", ret)
-	}
-	return nil
 }
 
 func (s *SAPIEngine) Speak(text string) error {
@@ -66,13 +33,6 @@ func (s *SAPIEngine) Speak(text string) error {
 	if s.playing {
 		return fmt.Errorf("already playing")
 	}
-
-	// This is a simplified implementation
-	// In a real implementation, you would:
-	// 1. Create ISpVoice COM object
-	// 2. Set voice parameters
-	// 3. Call ISpVoice::Speak() method
-	// 4. Handle async speech events
 
 	s.playing = true
 
@@ -85,8 +45,7 @@ func (s *SAPIEngine) Speak(text string) error {
 			s.mutex.Unlock()
 		}()
 
-		// Here you would integrate with actual SAPI calls
-		// For now, we'll use a simple system call to demonstrate
+		// Use PowerShell to access Windows Speech API
 		cmd := exec.Command("powershell", "-Command",
 			fmt.Sprintf(`Add-Type -AssemblyName System.Speech; 
 			$synth = New-Object System.Speech.Synthesis.SpeechSynthesizer; 
@@ -111,8 +70,6 @@ func (s *SAPIEngine) Stop() error {
 
 	s.playing = false
 	s.paused = false
-
-	// In real implementation, you would call ISpVoice::Speak() with SPF_PURGEBEFORESPEAK flag
 	return nil
 }
 
@@ -125,7 +82,6 @@ func (s *SAPIEngine) Pause() error {
 	}
 
 	s.paused = true
-	// In real implementation: ISpVoice::Pause()
 	return nil
 }
 
@@ -138,7 +94,6 @@ func (s *SAPIEngine) Resume() error {
 	}
 
 	s.paused = false
-	// In real implementation: ISpVoice::Resume()
 	return nil
 }
 
@@ -147,7 +102,6 @@ func (s *SAPIEngine) SetVoice(voice string) error {
 	defer s.mutex.Unlock()
 
 	s.config.Voice = voice
-	// In real implementation: ISpVoice::SetVoice()
 	return nil
 }
 
@@ -160,7 +114,6 @@ func (s *SAPIEngine) SetSpeed(speed float64) error {
 	}
 
 	s.config.Speed = speed
-	// In real implementation: ISpVoice::SetRate()
 	return nil
 }
 
@@ -173,7 +126,6 @@ func (s *SAPIEngine) SetVolume(volume float64) error {
 	}
 
 	s.config.Volume = volume
-	// In real implementation: ISpVoice::SetVolume()
 	return nil
 }
 
@@ -190,7 +142,5 @@ func (s *SAPIEngine) IsPaused() bool {
 }
 
 func (s *SAPIEngine) GetAvailableVoices() ([]string, error) {
-	// In real implementation, you would enumerate available SAPI voices
-	// using ISpObjectTokenCategory::EnumTokens()
 	return []string{"Microsoft David", "Microsoft Zira", "Microsoft Mark"}, nil
 }

@@ -1,8 +1,5 @@
-// internal/tts/espeak.go
 // Cross-platform eSpeak implementation
 package tts
-
-import "C"
 
 import (
 	"fmt"
@@ -10,7 +7,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"syscall"
 )
 
 // ESpeakEngine implements TTS using eSpeak/eSpeak-NG
@@ -22,8 +18,8 @@ type ESpeakEngine struct {
 	mutex   sync.RWMutex
 }
 
-// NewESpeakEngine creates a new eSpeak TTS engine
-func NewESpeakEngine(config Config) (*ESpeakEngine, error) {
+// newESpeakEngine creates a new eSpeak TTS engine
+func newESpeakEngine(config Config) (*ESpeakEngine, error) {
 	// Check if eSpeak is available
 	espeakPath, err := findESpeakExecutable()
 	if err != nil {
@@ -142,9 +138,9 @@ func (e *ESpeakEngine) Pause() error {
 	}
 
 	if e.cmd != nil && e.cmd.Process != nil {
-		// eSpeak doesn't support pause/resume, so we stop and remember position
+		// eSpeak doesn't support pause/resume, so we stop the process
 		// This is a limitation of the eSpeak command-line interface
-		if err := e.cmd.Process.Signal(syscall.SIGSTOP); err != nil {
+		if err := e.pauseProcess(); err != nil {
 			return err
 		}
 		e.paused = true
@@ -162,7 +158,7 @@ func (e *ESpeakEngine) Resume() error {
 	}
 
 	if e.cmd != nil && e.cmd.Process != nil {
-		if err := e.cmd.Process.Signal(syscall.SIGCONT); err != nil {
+		if err := e.resumeProcess(); err != nil {
 			return err
 		}
 		e.paused = false
@@ -267,53 +263,3 @@ func parseESpeakVoices(output string) []string {
 
 	return voices
 }
-
-// ===================================
-
-// ===================================
-
-// Installation instructions and dependencies
-
-/*
-To use these TTS implementations:
-
-## eSpeak (Cross-platform)
-
-### Ubuntu/Debian:
-sudo apt-get install espeak espeak-data
-
-### macOS (via Homebrew):
-brew install espeak
-
-### Windows:
-Download from: http://espeak.sourceforge.net/download.html
-
-## Windows SAPI
-Already available on Windows systems.
-No additional installation required.
-
-## macOS AVFoundation
-Already available on macOS systems.
-Requires Xcode or Command Line Tools for compilation.
-
-## Go build tags usage:
-go build -tags "windows" ./...  # For Windows SAPI
-go build -tags "darwin" ./...   # For macOS AVFoundation
-go build ./...                  # Default build (includes eSpeak and mock)
-
-## Example configuration:
-tts:
-  type: auto        # Auto-select best engine for platform
-  voice: default    # Use default system voice
-  speed: 1.0        # Normal speed
-  volume: 1.0       # Full volume
-
-## Cloud TTS Integration Example:
-For production applications, consider cloud TTS services:
-- Google Cloud Text-to-Speech API
-- Amazon Polly
-- Microsoft Azure Cognitive Services Speech
-- IBM Watson Text to Speech
-
-These provide higher quality voices and more features.
-*/

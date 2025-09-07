@@ -11,6 +11,7 @@ import (
 	"os"
 	"storynest/internal/cli/scheme/colours"
 	"storynest/internal/domain/library"
+	"storynest/internal/domain/library/generator"
 	"storynest/internal/domain/story"
 	"storynest/internal/story/tts"
 	"strconv"
@@ -23,6 +24,8 @@ import (
 
 // StoryNest main application structure
 type StoryNest struct {
+	generator generator.StoryGenerator
+
 	libraries []library.StoryLibrary
 	Tts       tts.Engine
 	ctx       context.Context
@@ -44,6 +47,9 @@ func NewStoryNest() *StoryNest {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	return &StoryNest{
+		generator: generator.NewGutendex(),
+
+		// todo: remove once we have a generator
 		libraries: []library.StoryLibrary{},
 		Tts:       engine,
 		ctx:       ctx,
@@ -142,7 +148,26 @@ func (sn *StoryNest) ListStories(cmd *cobra.Command, args []string) {
 	colours.Title.Println("📚 Available Stories 📚")
 	fmt.Println()
 
+	resources, err := sn.generator.ListOnlineResources()
+	if err != nil {
+		colours.Error.Println(err)
+	}
+
+	// todo:
 	count := 0
+	for _, res := range resources {
+		count++
+		fmt.Printf("  %d. ", count)
+		colours.Title.Printf("%s", res.Name)
+		fmt.Printf(" by ")
+		colours.Author.Printf("%s", res.Metadata["Authors"])
+		//fmt.Printf("\n     🎯 Age: %s | 🎭 Genre: %s | ⏱️ Duration: %s\n",
+		//	story.AgeGroup, story.Genre, story.Duration)
+		fmt.Printf("     💡 %s\n", res.Metadata["Description"])
+		colours.Info.Printf("     ID: %s\n", res.ID)
+		fmt.Println()
+	}
+
 	for _, lib := range sn.libraries {
 		colours.Info.Printf("📖 From %s:\n", lib.Name)
 

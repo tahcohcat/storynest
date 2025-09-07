@@ -1,5 +1,14 @@
 package story
 
+type OnlineResource struct {
+	ID          string            `json:"id"`
+	Name        string            `json:"name"`
+	Description string            `json:"description"`
+	Provider    string            `json:"product"`
+	Metadata    map[string]string `json:"metadata"`
+	URL         string            `json:"url"`
+}
+
 type Item struct {
 	ID          string `json:"id"`
 	Title       string `json:"title"`

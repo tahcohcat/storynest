@@ -99,6 +99,8 @@ from public libraries around the world. Perfect for bedtime! 🌙
 		colours.Error.Printf("❌ Error: %v\n", err)
 		os.Exit(1)
 	}
+
+	//app.ListStories(rootCmd, []string{})
 }
 
 // Configuration management with Viper
