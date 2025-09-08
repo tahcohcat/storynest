@@ -48,7 +48,7 @@ func NewStoryNest() *StoryNest {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	return &StoryNest{
-		onlineLibrary: guten.NewGutenbergCache("./cache", 24*time.Hour),
+		onlineLibrary: guten.NewGutenbergCache("./cache", 4*24*time.Hour),
 
 		// todo: remove once we have a guten
 		libraries: []library.StoryLibrary{},
@@ -56,6 +56,11 @@ func NewStoryNest() *StoryNest {
 		ctx:       ctx,
 		Cancel:    cancel,
 	}
+}
+
+func (sn *StoryNest) SetVoice(voice string) error {
+	logrus.WithField("voice", voice).Info("set voice")
+	return sn.Tts.SetVoice(voice)
 }
 
 func (sn *StoryNest) ShowWelcome() {
@@ -149,14 +154,14 @@ func (sn *StoryNest) ListStories(cmd *cobra.Command, args []string) {
 	colours.Title.Println("📚 Available Stories 📚")
 	fmt.Println()
 
-	library, err := sn.onlineLibrary.GetLibrary()
+	onlineLibrary, err := sn.onlineLibrary.GetLibrary()
 	if err != nil {
 		colours.Error.Println(err)
 	}
 
 	// todo:
 	count := 0
-	for _, story := range library.Stories {
+	for _, story := range onlineLibrary.Stories {
 		count++
 		fmt.Printf("  %d. ", count)
 		colours.Title.Printf("%s", story.Title)
@@ -593,4 +598,310 @@ func (sn *StoryNest) LoadSampleLibrariesWithGutenberg() {
 		colours.Warning.Printf("⚠️ Could not load Gutenberg stories: %v\n", err)
 		colours.Info.Println("💡 You can manually load them later with: storynest gutenberg load")
 	}
+}
+
+// ConfigureTTSEngine allows users to configure TTS engine settings
+func (sn *StoryNest) ConfigureTTSEngine(cmd *cobra.Command, args []string) {
+	fmt.Println()
+	colours.Title.Println("🎤 TTS Engine Configuration 🎤")
+	fmt.Println()
+
+	// Show current engine
+	colours.Info.Printf("Current Engine: %s\n", sn.getCurrentEngineName())
+	fmt.Println()
+
+	// Show available engines
+	engines := tts.GetAvailableEngines()
+	colours.Prompt.Println("Available TTS Engines:")
+	for i, engine := range engines {
+		fmt.Printf("  %d. %s", i+1, engine)
+		if string(engine) == sn.getCurrentEngineName() {
+			colours.Success.Print(" (current)")
+		}
+		fmt.Println()
+	}
+	fmt.Println()
+
+	colours.Prompt.Print("Select engine number (or press Enter to keep current): ")
+	reader := bufio.NewReader(os.Stdin)
+	input, _ := reader.ReadString('\n')
+	input = strings.TrimSpace(input)
+
+	if input == "" {
+		colours.Info.Println("Keeping current engine")
+		return
+	}
+
+	choice, err := strconv.Atoi(input)
+	if err != nil || choice < 1 || choice > len(engines) {
+		colours.Error.Println("❌ Invalid selection")
+		return
+	}
+
+	selectedEngine := engines[choice-1]
+
+	// Create new engine with current config
+	config := tts.Config{
+		Type: string(selectedEngine),
+
+		//todo:
+		Speed:  1.0,
+		Volume: 1.0,
+		Voice:  "default",
+	}
+
+	newEngine, err := tts.NewEngine(config)
+	if err != nil {
+		colours.Error.Printf("❌ Failed to create %s engine: %v\n", selectedEngine, err)
+		return
+	}
+
+	sn.Tts = newEngine
+	colours.Success.Printf("✅ Switched to %s engine\n", selectedEngine)
+
+	// If it's Chirp, show additional configuration options
+	if selectedEngine == tts.EngineTypeGoogleClassic {
+		sn.configureChirpSettings()
+	}
+}
+
+func (sn *StoryNest) configureChirpSettings() {
+	fmt.Println()
+	colours.Title.Println("🌟 Google Chirp TTS Configuration 🌟")
+	fmt.Println()
+
+	// Show voice selection
+	voices, err := sn.Tts.GetAvailableVoices()
+	if err != nil {
+		colours.Error.Printf("❌ Failed to get available voices: %v\n", err)
+		return
+	}
+
+	colours.Prompt.Println("Available Chirp Voices (recommended for children):")
+	fmt.Println()
+
+	// Group voices by type for better presentation
+	journeyVoices := []string{}
+	neuralVoices := []string{}
+	standardVoices := []string{}
+
+	for _, voice := range voices {
+		if strings.Contains(voice, "Journey") {
+			journeyVoices = append(journeyVoices, voice)
+		} else if strings.Contains(voice, "Neural") {
+			neuralVoices = append(neuralVoices, voice)
+		} else {
+			standardVoices = append(standardVoices, voice)
+		}
+	}
+
+	// Show Journey voices (best for children)
+	if len(journeyVoices) > 0 {
+		colours.Success.Println("🌟 Journey Voices (Best for Children):")
+		for i, voice := range journeyVoices {
+			gender := "Unknown"
+			if strings.Contains(voice, "Journey-F") {
+				gender = "Female"
+			} else if strings.Contains(voice, "Journey-D") || strings.Contains(voice, "Journey-O") {
+				gender = "Male"
+			}
+			fmt.Printf("  %d. %s (%s)\n", i+1, voice, gender)
+		}
+		fmt.Println()
+	}
+
+	// Show Neural voices
+	if len(neuralVoices) > 0 {
+		colours.Info.Println("🧠 Neural Voices (High Quality):")
+		for i, voice := range neuralVoices {
+			fmt.Printf("  %d. %s\n", len(journeyVoices)+i+1, voice)
+		}
+		fmt.Println()
+	}
+
+	// Show standard voices
+	if len(standardVoices) > 0 {
+		colours.Info.Println("📢 Standard Voices:")
+		for i, voice := range standardVoices {
+			fmt.Printf("  %d. %s\n", len(journeyVoices)+len(neuralVoices)+i+1, voice)
+		}
+		fmt.Println()
+	}
+
+	colours.Prompt.Print("Select voice number (or press Enter for default): ")
+	reader := bufio.NewReader(os.Stdin)
+	input, _ := reader.ReadString('\n')
+	input = strings.TrimSpace(input)
+
+	if input != "" {
+		choice, err := strconv.Atoi(input)
+		if err != nil || choice < 1 || choice > len(voices) {
+			colours.Error.Println("❌ Invalid selection")
+			return
+		}
+
+		selectedVoice := voices[choice-1]
+		if err := sn.Tts.SetVoice(selectedVoice); err != nil {
+			colours.Error.Printf("❌ Failed to set voice: %v\n", err)
+			return
+		}
+
+		colours.Success.Printf("✅ Voice set to: %s\n", selectedVoice)
+	}
+
+	// Configure speed
+	fmt.Println()
+	colours.Prompt.Print("Enter speaking speed (0.25-4.0, current: 1.0): ")
+	speedInput, _ := reader.ReadString('\n')
+	speedInput = strings.TrimSpace(speedInput)
+
+	if speedInput != "" {
+		speed, err := strconv.ParseFloat(speedInput, 64)
+		if err != nil || speed < 0.25 || speed > 4.0 {
+			colours.Error.Println("❌ Speed must be between 0.25 and 4.0")
+		} else {
+			if err := sn.Tts.SetSpeed(speed); err != nil {
+				colours.Error.Printf("❌ Failed to set speed: %v\n", err)
+			} else {
+				colours.Success.Printf("✅ Speed set to: %.2f\n", speed)
+			}
+		}
+	}
+
+	// Show cache information if available
+	if cacheable, ok := sn.Tts.(tts.CacheableEngine); ok {
+		fmt.Println()
+		colours.Info.Println("📁 Cache Information:")
+		if stats, err := cacheable.GetCacheStats(); err == nil {
+			colours.Info.Printf("  Cache Directory: %s\n", stats["cache_directory"])
+			colours.Info.Printf("  Cached Files: %d\n", stats["cached_files"])
+			colours.Info.Printf("  Total Size: %.2f MB\n", stats["total_size_mb"])
+		}
+	}
+}
+
+// Show TTS Engine Status
+func (sn *StoryNest) ShowTTSStatus(cmd *cobra.Command, args []string) {
+	fmt.Println()
+	colours.Title.Println("🎤 TTS Engine Status 🎤")
+	fmt.Println()
+
+	// Current engine info
+	colours.Success.Printf("Engine: %s\n", sn.getCurrentEngineName())
+	colours.Info.Printf("Status: %s\n", sn.getTTSStatus())
+
+	// Show voices if available
+	if voices, err := sn.Tts.GetAvailableVoices(); err == nil && len(voices) > 0 {
+		colours.Info.Printf("Available Voices: %d\n", len(voices))
+		if len(voices) <= 10 {
+			for _, voice := range voices {
+				fmt.Printf("  • %s\n", voice)
+			}
+		} else {
+			for i := 0; i < 5; i++ {
+				fmt.Printf("  • %s\n", voices[i])
+			}
+			fmt.Printf("  ... and %d more\n", len(voices)-5)
+		}
+	}
+
+	// Show cache stats for Chirp
+	if cacheable, ok := sn.Tts.(tts.CacheableEngine); ok {
+		fmt.Println()
+		colours.Info.Println("📁 Cache Statistics:")
+		if stats, err := cacheable.GetCacheStats(); err == nil {
+			fmt.Printf("  Directory: %s\n", stats["cache_directory"])
+			fmt.Printf("  Files: %d\n", stats["cached_files"])
+			fmt.Printf("  Size: %.2f MB\n", stats["total_size_mb"])
+		}
+	}
+}
+
+// Clear TTS Cache
+func (sn *StoryNest) ClearTTSCache(cmd *cobra.Command, args []string) {
+	if cacheable, ok := sn.Tts.(tts.CacheableEngine); ok {
+		colours.Info.Println("🧹 Clearing TTS cache...")
+		if err := cacheable.ClearCache(); err != nil {
+			colours.Error.Printf("❌ Failed to clear cache: %v\n", err)
+		} else {
+			colours.Success.Println("✅ TTS cache cleared successfully!")
+		}
+	} else {
+		colours.Warning.Println("⚠️ Current TTS engine doesn't support caching")
+	}
+}
+
+func (sn *StoryNest) getCurrentEngineName() string {
+	// This would need to be implemented based on how you track the current engine
+	// For now, return a placeholder
+	return "Unknown"
+}
+
+func (sn *StoryNest) getTTSStatus() string {
+	if sn.Tts.IsPlaying() {
+		return "🔊 Playing"
+	}
+	if enhanced, ok := sn.Tts.(tts.EnhancedEngine); ok && enhanced.IsPaused() {
+		return "⏸️ Paused"
+	}
+	return "⏹️ Stopped"
+}
+
+// Add these commands to your main.go rootCmd setup:
+
+// AddTTSCommands adds TTS management commands to the CLI
+func (sn *StoryNest) AddTTSCommands(rootCmd *cobra.Command) {
+	// TTS parent command
+	ttsCmd := &cobra.Command{
+		Use:   "tts",
+		Short: "🎤 Manage text-to-speech settings",
+		Long:  "Configure and manage TTS engines, voices, and settings",
+	}
+
+	// Configure subcommand
+	configureCmd := &cobra.Command{
+		Use:   "configure",
+		Short: "⚙️ Configure TTS engine",
+		Long:  "Select and configure TTS engine and voice settings",
+		Run:   sn.ConfigureTTSEngine,
+	}
+
+	// Status subcommand
+	statusCmd := &cobra.Command{
+		Use:   "status",
+		Short: "📊 Show TTS status",
+		Long:  "Display current TTS engine status and available voices",
+		Run:   sn.ShowTTSStatus,
+	}
+
+	// Clear cache subcommand
+	clearCacheCmd := &cobra.Command{
+		Use:   "clear-cache",
+		Short: "🧹 Clear TTS cache",
+		Long:  "Clear cached audio files (applies to Chirp TTS)",
+		Run:   sn.ClearTTSCache,
+	}
+
+	// Test TTS subcommand
+	testCmd := &cobra.Command{
+		Use:   "test",
+		Short: "🔊 Test TTS with sample text",
+		Long:  "Test the current TTS engine with sample text",
+		Run: func(cmd *cobra.Command, args []string) {
+			testText := "Hello! This is a test of the StoryNest text-to-speech system. How does it sound?"
+			if len(args) > 0 {
+				testText = strings.Join(args, " ")
+			}
+
+			colours.Info.Printf("🔊 Testing TTS with: \"%s\"\n", testText)
+			if err := sn.Tts.Speak(testText); err != nil {
+				colours.Error.Printf("❌ TTS test failed: %v\n", err)
+			} else {
+				colours.Success.Println("✅ TTS test started successfully!")
+			}
+		},
+	}
+
+	ttsCmd.AddCommand(configureCmd, statusCmd, clearCacheCmd, testCmd)
+	rootCmd.AddCommand(ttsCmd)
 }

@@ -2,18 +2,22 @@ package tts
 
 import (
 	"fmt"
+	"os"
 	"runtime"
+
+	"github.com/spf13/viper"
 )
 
 type EngineType string
 
 // Updated EngineType constants
 const (
-	EngineTypeMock         EngineType = "mock"
-	EngineTypeESpeak       EngineType = "espeak"
-	EngineTypeSAPI         EngineType = "sapi"         // Windows only
-	EngineTypeAVFoundation EngineType = "avfoundation" // macOS only
-	EngineTypeAuto         EngineType = "auto"         // Automatically choose best for platform
+	EngineTypeMock          EngineType = "mock"
+	EngineTypeESpeak        EngineType = "espeak"
+	EngineTypeSAPI          EngineType = "sapi"         // Windows only
+	EngineTypeAVFoundation  EngineType = "avfoundation" // macOS only
+	EngineTypeGoogleClassic EngineType = "googleclassic"
+	EngineTypeAuto          EngineType = "auto" // Automatically choose best for platform
 )
 
 func (e EngineType) String() string {
@@ -21,6 +25,7 @@ func (e EngineType) String() string {
 }
 
 // NewEngine creates a new TTS engine based on the provided config
+// todo: integrate this with viper config defaults
 func NewEngine(config Config) (Engine, error) {
 	// Handle auto-selection
 	if config.Type == EngineTypeAuto.String() {
@@ -30,6 +35,10 @@ func NewEngine(config Config) (Engine, error) {
 	switch config.Type {
 	case EngineTypeMock.String():
 		return NewMockTTSEngine(config), nil
+
+	case EngineTypeWavenet.String():
+		cachePath := viper.GetString("tts.cache_path")
+		return newGoogleClassicTTSEngine(cachePath)
 
 	case EngineTypeESpeak.String():
 		return newESpeakEngine(config)
@@ -57,6 +66,12 @@ func newAVFoundationEngine(config Config) (Engine, error) {
 
 // getBestEngineForPlatform returns the recommended engine for the current platform
 func getBestEngineForPlatform() EngineType {
+
+	if hasGoogleCredentials() {
+		//todo: switch to chirp once enabled
+		return EngineTypeWavenet
+	}
+
 	switch runtime.GOOS {
 	case "windows":
 		return EngineTypeSAPI
@@ -73,6 +88,11 @@ func getBestEngineForPlatform() EngineType {
 func GetAvailableEngines() []EngineType {
 	engines := []EngineType{EngineTypeMock, EngineTypeESpeak}
 
+	// Add Chirp if Google credentials are available
+	if hasGoogleCredentials() {
+		engines = append(engines, EngineTypeGoogleClassic)
+	}
+
 	switch runtime.GOOS {
 	case "windows":
 		engines = append(engines, EngineTypeSAPI)
@@ -81,4 +101,11 @@ func GetAvailableEngines() []EngineType {
 	}
 
 	return engines
+}
+
+// hasGoogleCredentials checks if Google Cloud credentials are available
+func hasGoogleCredentials() bool {
+	// Check for service account key file
+	_, ok := os.LookupEnv("GOOGLE_APPLICATION_CREDENTIALS")
+	return ok
 }

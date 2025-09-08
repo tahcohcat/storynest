@@ -16,6 +16,10 @@ type MockTTSEngine struct {
 	voice   string
 }
 
+func (m *MockTTSEngine) GetAvailableVoices() ([]string, error) {
+	return []string{"mock-voice"}, nil
+}
+
 func NewMockTTSEngine(c Config) *MockTTSEngine {
 	return &MockTTSEngine{
 		speed:  c.Speed,

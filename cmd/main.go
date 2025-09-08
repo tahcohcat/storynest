@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/signal"
 	"storynest/internal/cli/scheme/colours"
+	"storynest/internal/config"
 	"storynest/internal/story/nest"
 	"syscall"
 
@@ -13,6 +14,9 @@ import (
 )
 
 func main() {
+
+	config.SetDefaults()
+
 	app := nest.NewStoryNest()
 
 	// Setup signal handling for graceful shutdown
@@ -88,6 +92,7 @@ from public libraries around the world. Perfect for bedtime! 🌙
 	// Add flags
 	listCmd.Flags().StringP("genre", "g", "", "Filter by genre")
 	listCmd.Flags().StringP("age", "a", "", "Filter by age group")
+	readCmd.Flags().StringP("voice", "v", "", "Optional voice to use for reading. See voice list for options")
 	readCmd.Flags().BoolP("interactive", "i", false, "Interactive story selection")
 
 	rootCmd.AddCommand(listCmd, randomCmd, readCmd, librariesCmd, settingsCmd)

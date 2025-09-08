@@ -29,6 +29,8 @@ go.work.sum
 .env
 
 # Editor/IDE
-.idea/
+.idea/*
+.idea/modules.xml
+.idea/storynest.iml
 .idea
 # .vscode/
