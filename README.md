@@ -1,9 +1,23 @@
-# StoryNest
+# 🪺 StoryNest
+
 
 **A cozy home for bedtime stories, read aloud for kids.**  
+
 StoryNest is a friendly command-line interface (CLI) powered by [Cobra (Go)](https://github.com/spf13/cobra) that helps you browse, select, and listen to stories—with flexible voice options and interactive mode.
 
----
+----
+<img src="data/readme/img_2.png" width="10%"/>
+
+![Made with Go](https://img.shields.io/badge/Made%20with-Go-00ADD8?logo=go&logoColor=white)
+![Story Time](https://img.shields.io/badge/📖-Storynest-blueviolet)
+![Bedtime Friendly](https://img.shields.io/badge/🌙-Bedtime%20Friendly-ff69b4)
+![GitHub Workflow Status](https://img.shields.io/github/actions/workflow/status/tahcohcat/storynest/go.yml?branch=main&label=build)
+![GitHub commit activity](https://img.shields.io/github/commit-activity/m/tahcohcat/storynest)
+![GitHub last commit](https://img.shields.io/github/last-commit/tahcohcat/storynest)
+![Project Gutenberg](https://img.shields.io/badge/📚-Project%20Gutenberg-orange)
+![Library Size](https://img.shields.io/badge/Stories-∞-brightgreen)
+![Voices](https://img.shields.io/badge/GoogleTTS-Chirp3%20HD-blue)
+![eSpeak](https://img.shields.io/badge/eSpeakTTS-%20HD-blue)
 
 ## Features
 
