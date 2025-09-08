@@ -92,8 +92,12 @@ from public libraries around the world. Perfect for bedtime! 🌙
 	// Add flags
 	listCmd.Flags().StringP("genre", "g", "", "Filter by genre")
 	listCmd.Flags().StringP("age", "a", "", "Filter by age group")
-	readCmd.Flags().StringP("voice", "v", "", "Optional voice to use for reading. See voice list for options")
+
 	readCmd.Flags().BoolP("interactive", "i", false, "Interactive story selection")
+
+	rootCmd.PersistentFlags().StringP("voice", "v", "", "Optional voice to use for reading")
+
+	rootCmd.Flags().SetInterspersed(true)
 
 	rootCmd.AddCommand(listCmd, randomCmd, readCmd, librariesCmd, settingsCmd)
 
@@ -107,8 +111,6 @@ from public libraries around the world. Perfect for bedtime! 🌙
 		colours.Error.Printf("❌ Error: %v\n", err)
 		os.Exit(1)
 	}
-
-	rootCmd.Run(randomCmd, []string{})
 }
 
 // Configuration management with Viper

@@ -18,6 +18,11 @@ type ESpeakEngine struct {
 	mutex   sync.RWMutex
 }
 
+func (e *ESpeakEngine) SetBookContext(provider, bookID string) {
+	//TODO implement me
+	panic("implement me")
+}
+
 // newESpeakEngine creates a new eSpeak TTS engine
 func newESpeakEngine(config Config) (*ESpeakEngine, error) {
 	// Check if eSpeak is available

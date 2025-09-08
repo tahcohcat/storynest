@@ -20,6 +20,11 @@ type SAPIEngine struct {
 	mutex   sync.RWMutex
 }
 
+func (s *SAPIEngine) SetBookContext(provider, bookID string) {
+	//TODO implement me
+	panic("implement me")
+}
+
 // newSAPIEngine creates a new Windows SAPI TTS engine
 func newSAPIEngine(config Config) (*SAPIEngine, error) {
 	engine := &SAPIEngine{

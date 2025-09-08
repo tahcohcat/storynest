@@ -19,6 +19,8 @@ type Engine interface {
 	Resume() error
 	IsPlaying() bool
 	GetAvailableVoices() ([]string, error)
+
+	SetBookContext(provider, bookID string)
 }
 
 // CacheableEngine extends Engine with cache management capabilities

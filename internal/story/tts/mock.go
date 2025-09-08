@@ -16,6 +16,11 @@ type MockTTSEngine struct {
 	voice   string
 }
 
+func (m *MockTTSEngine) SetBookContext(provider, bookID string) {
+	//TODO implement me
+	panic("implement me")
+}
+
 func (m *MockTTSEngine) GetAvailableVoices() ([]string, error) {
 	return []string{"mock-voice"}, nil
 }

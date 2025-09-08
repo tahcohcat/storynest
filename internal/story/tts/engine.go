@@ -36,7 +36,7 @@ func NewEngine(config Config) (Engine, error) {
 	case EngineTypeMock.String():
 		return NewMockTTSEngine(config), nil
 
-	case EngineTypeWavenet.String():
+	case EngineTypeGoogleClassic.String():
 		cachePath := viper.GetString("tts.cache_path")
 		return newGoogleClassicTTSEngine(cachePath)
 
@@ -68,8 +68,7 @@ func newAVFoundationEngine(config Config) (Engine, error) {
 func getBestEngineForPlatform() EngineType {
 
 	if hasGoogleCredentials() {
-		//todo: switch to chirp once enabled
-		return EngineTypeWavenet
+		return EngineTypeGoogleClassic
 	}
 
 	switch runtime.GOOS {

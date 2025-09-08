@@ -220,11 +220,21 @@ func (sn *StoryNest) ReadRandomStory(cmd *cobra.Command, args []string) {
 	colours.Prompt.Println("🎲 Random Story Selection! 🎲")
 	fmt.Println()
 
+	voice, _ := cmd.Flags().GetString("voice")
+	if err := sn.Tts.SetVoice(voice); err != nil {
+		colours.Error.Println("❌ voice '%s' not found on current tts engine!\n")
+	}
+
 	sn.displayAndReadStory(randomStory)
 }
 
 func (sn *StoryNest) ReadStory(cmd *cobra.Command, args []string) {
 	interactive, _ := cmd.Flags().GetBool("interactive")
+
+	voice, _ := cmd.Flags().GetString("voice")
+	if err := sn.Tts.SetVoice(voice); err != nil {
+		colours.Error.Println("❌ voice '%s' not found on current tts engine!\n")
+	}
 
 	if len(args) == 0 || interactive {
 		sn.interactiveStorySelection()
@@ -319,8 +329,37 @@ func (sn *StoryNest) displayAndReadStory(story story.Item) {
 		}
 	}()
 
+	// Set book context for TTS caching if the engine supports it
+
+	// Extract provider from story ID
+	provider := extractProviderFromStoryID(story.ID)
+	// Extract book ID from story ID (remove provider prefix)
+	bookID := extractBookIDFromStoryID(story.ID)
+
+	sn.Tts.SetBookContext(provider, bookID)
+
+	colours.Info.Printf("🗂️ Using cache: %s/%s\n", provider, bookID)
+
 	// Wait for user input or context cancellation
 	sn.waitForUserInput()
+}
+
+// Helper function to extract provider from story ID
+func extractProviderFromStoryID(storyID string) string {
+	if strings.HasPrefix(storyID, "gutenberg-") {
+		return "gutenberg"
+	}
+	// Add other providers as needed
+	return "unknown"
+}
+
+// Helper function to extract book ID from story ID
+func extractBookIDFromStoryID(storyID string) string {
+	if strings.HasPrefix(storyID, "gutenberg-") {
+		return strings.TrimPrefix(storyID, "gutenberg-")
+	}
+	// For other providers, return the full ID if no prefix is found
+	return storyID
 }
 
 func (sn *StoryNest) waitForUserInput() {
